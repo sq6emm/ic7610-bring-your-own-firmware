@@ -41,6 +41,23 @@ Writes `bootstrap.bin`, `main.bin`, `main.elf` (load address set for analysis) a
 stream offset and the output length, so the same tool also decodes IC-705, IC-9700 and
 IC-905.
 
+## Re-packing
+
+`ic_rza1_repack.py` closes the loop — a decompressed main-CPU image is re-compressed and
+re-sealed into a container the format accepts:
+
+```python
+from ic_rza1_repack import repack
+raw = open("7610_145.dat", "rb").read()
+image = open("out/7610/main.bin", "rb").read()      # patch this image as you like
+open("7610_145.patched.dat", "wb").write(repack(raw, image))
+```
+
+The LZSS encoder (lazy matching) round-trips bit-for-bit through the decoder and runs ~2%
+under Icom's own size; the autokey transform is an exact inverse. An **identity re-pack**
+(same image) produces a valid-MD5 container (IC-7610 MD5 region `0x400000`) that re-decodes
+to the identical image — only the main slot and the 16-byte digest change.
+
 ## Scope and limits
 
 - Verified on IC-7610 firmware (v1.44 / v1.45): main-CPU image recovered, ARM vectors
