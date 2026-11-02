@@ -67,6 +67,20 @@ to the identical image — only the main slot and the 16-byte digest change.
   remaining images is a follow-up.
 - Whether a real radio accepts a rebuilt image is **unverified**.
 
+## Acknowledgements
+
+Emulation of this radio builds on the reverse-engineering of the closely related Icom
+**IC-7300**, which uses the same Renesas RZ/A1 SoC family:
+
+- [jeskko/ic7300-homebrew](https://github.com/jeskko/ic7300-homebrew) (MIT) — a custom
+  **QEMU machine for the RZ/A1**, a homebrew SDK, and container/LZSS tooling. We use its
+  QEMU/SoC work as the reference base for emulating IC-7610 firmware.
+- [zarthur/ic-7300_firmware](https://github.com/zarthur/ic-7300_firmware) (MIT) — IC-7300
+  firmware reverse-engineering research.
+
+These are prior art for the **shared silicon** only; this project targets the IC-7610 and
+does not redistribute their work.
+
 ## Legal
 
 For interoperability and research. **Do not** commit or redistribute Icom firmware,
