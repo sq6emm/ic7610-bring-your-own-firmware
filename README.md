@@ -67,6 +67,13 @@ to the identical image — only the main slot and the 16-byte digest change.
   remaining images is a follow-up.
 - Whether a real radio accepts a rebuilt image is **unverified**.
 
+## Project status
+
+- **Decode:** verified on IC-7610 firmware (main-CPU image recovered).
+- **Re-pack (device-valid container):** ✅ identity re-pack verified (valid MD5, re-decodes identical).
+- **Next:** emulation-based validation on the shared RZ/A1 SoC (see Acknowledgements), so a rebuilt
+  image can be checked in an emulator **before** any real-device flashing is ever attempted.
+
 ## Acknowledgements
 
 Emulation of this radio builds on the reverse-engineering of the closely related Icom
