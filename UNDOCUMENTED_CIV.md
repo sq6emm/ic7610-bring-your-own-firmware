@@ -1,88 +1,76 @@
-# Undocumented CI-V commands (Icom RZ/A1 family)
+# Undocumented CI-V commands (IC-7610)
 
-Commands implemented in the firmware of the **IC-705 / IC-9700 / IC-905** (and **IC-7610**) that are **not
-listed in Icom's public CI-V reference guides**. Recovered by reverse-engineering the firmware; the IC-705
-findings were confirmed on a real radio over USB CI-V.
+Commands implemented in the IC-7610 firmware that are **not listed in Icom's public CI-V reference guide**.
+Recovered by reverse-engineering the firmware (dispatch tables + handler code). (The IC-705 / IC-9700 / IC-905
+have an analogous service block — documented in their own repository; the IC-705 one was confirmed on real
+hardware.)
 
 > ⚠️ **WARNING.** Some of these are **factory service** commands that **reset the radio, enter calibration/
-> alignment mode, or write raw calibration data**. Sending them can **wipe your settings** or **misalign the
-> radio** (hard to undo without test equipment). *Read* commands are safe; *writes/actions* are not. This
-> documents **what exists** — it is not a recommendation to use it. Use only on radios you own, with backups.
+> alignment mode, or write raw calibration data** — including the Ethernet MAC address. Sending them can **wipe
+> your settings** or **misalign the radio** (hard to undo without test equipment). *Read* commands are safe;
+> *writes/actions* are not. This documents **what exists** — it is not a recommendation to use it. Use only on a
+> radio you own, with backups.
 
 ## Frame recap
-`FE FE <to> <from> <cmd> [<sub>] [<data>] FD`. Default radio addresses: 705=`0xA4`, 9700=`0xA2`, 905=`0xAC`,
-7610=`0x98`; controller = `0xE0`. Reply `…FB`=OK, `…FA`=NG (rejected).
+`FE FE <to> <from> <cmd> [<sub>] [<data>] FD`. Default IC-7610 address = `0x98`; controller = `0xE0`.
+Reply `…FB`=OK, `…FA`=NG (rejected).
 
 ---
 
-## 1. Factory service block — command `0x1A`, sub `0xD0`–`0xEF` (all radios)
-A hidden factory interface tucked under the standard `0x1A` (settings) command. Subs `0xD0`–`0xEF` are not in
-the public reference. Four groups:
+## 1. Factory service block — command `0x1A`, sub `0xD0`–`0xE6`
+A hidden factory interface under the standard `0x1A` (settings) command. **Every sub below was read from the
+IC-7610's own dispatch table and handler code.** The IC-7610 has no D-STAR, so unlike the handheld/VHF radios it
+has **no DV self-test** — instead its password-gated secondary slot is an **Ethernet MAC-address write**.
 
-### 🟢 Safe reads (no password)
-| Cmd | What it reads |
-|---|---|
-| `1A D5` | Region/destination code (which market the radio is set for → which bands it may transmit) |
-| `1A D6` | An internal measured value (raw ADC reading used for calibration) |
-| `1A D8` | An internal status byte |
-| `1A E4` | Minor service value |
+### What each sub-command does (plain language)
 
-### 🔧 Password-protected adjustment / self-test
-Each requires a **model-specific ASCII password** sent as the command data:
+**🟢 Reads — safe, no password**
+- **`1A D5`** — *Read the region/destination code* (which market → which bands it may transmit).
+- **`1A D6`** — *Read an internal calibration measurement* (a raw sensor/ADC reading).
+- **`1A E4`** — *Read a minor service value.*
 
-| Radio | Enter alignment mode | DV self-test | Secondary adjust |
-|---|---|---|---|
-| IC-705 | `SX-4075 Adjust` | `SX-4075 DV Check` | `EX-4255 Adjust` |
-| IC-9700 | `SX-3913 Adjust` | `SX-3913 DV Check` | — |
-| IC-7610 | `SX-3864 Adjust` | — | `SX-3864 MAC Write` ← writes the Ethernet MAC |
-| IC-905 | `SX-4209 Adjust` | `SX-4209 DV Check` | `EX-4327 Adjust` |
+**🔧 Adjustment / MAC write — password required**
+Passwords (ASCII, sent as the command data):
 
-- **`1A E0` + "`<model> Adjust`"** — enters the factory **alignment/adjustment mode** (the on-screen service
-  menu technicians use to calibrate the radio). ✅ *Confirmed on a real IC-705: this unlocked the service menu
-  on the display.*
-- **`1A D2` + "`<model> DV Check`"** — runs a D-STAR/DV self-test.
-- **`1A D7` + "`<secondary> Adjust`"** — adjusts a secondary subsystem (only when the radio is in a safe state).
+| Function | Sub | Password |
+|---|---|---|
+| Enter factory alignment mode | `1A E0` | `SX-3864 Adjust` |
+| **Write the Ethernet MAC address** | `1A D7` | `SX-3864 MAC Write` |
 
-### 🔴 UNPROTECTED — reset / writes (NO password!)
-| Cmd | What it does |
-|---|---|
-| **`1A D0`** | **FACTORY RESET — clears all settings to defaults. No password.** (This wiped our test radio during blind probing.) |
-| **`1A E1`** | Another reset/clear variant |
-| `1A D1 / E2 / E5 / E7` | Write service flags / a calibration value / a raw data block / a config bit (some trigger subsystem re-init) |
-| `1A D3 / E3` | Service diagnostic / conditional band operation |
+- **`1A E0` + "`SX-3864 Adjust`"** — *Enter the factory alignment/adjustment mode* (the on-screen service menu a
+  technician uses to calibrate the radio). Internally it flips the radio into "service state 1".
+- **`1A D7` + "`SX-3864 MAC Write`"** — *Write the radio's Ethernet (LAN) MAC address.* This slot is unique to
+  the IC-7610 among this family because it is the model with a wired network port. It takes the address bytes
+  after the password and programs them. Changing a device's MAC is normally a factory-only operation.
+
+**🔴 Reset / writes / actions — NO password**
+- **`1A D0`** — **FACTORY RESET. Clears all settings to defaults. No password.** Internally enters "service
+  state 3" and zeroes the working data structures.
+- **`1A E1`** — *A second reset/clear variant* ("service state 2"); only guard is that one data byte must be 0.
+- **`1A D1`** — *Set a service/test-mode flag* (0/1); needs an internal permission bit already set.
+- **`1A D3`** — *Run a service diagnostic* and return the result as a CI-V frame (only in a safe state).
+- **`1A E2` / `E3` / `E5`** — *Service writes*: select a service sub-mode / pick the target of the next service
+  operation / write a service data value addressed by a byte in the command.
+- **`1A E6`** — reserved (no handler).
 
 ---
 
-## 2. Other undocumented commands (per radio)
-
-### IC-705
-- **`0x24`** — implemented (2-byte sub-command); a real radio replies to it; purpose not in the public reference.
-- **`0x28`** — a set-only command outside the standard list.
-
-### IC-9700
-- **`0x28 00`** — *band/preset recall*: reads an index 0–8 and recalls a band/preset. (On radios with a voice
-  keyer, `0x28` means voice-TX instead — here it does something else.)
-- **`0x1C 02` / `0x1C 03`** — present, while the standard `0x1C 01` (read TX frequency) is absent.
-- **`0x0D`** — a memory/bank operation.
-
-### IC-7610 (dual receiver)
-- **`0x2A`** — three sub-commands: `00` reads/writes 13-byte VFO/frequency records (a ring of 4, memo-pad-like);
-  `01` extended antenna/tuner control; `02` has a further sub-level.
-
-### IC-905 (microwave, 144 MHz – 10 GHz)
-- **Extended frequency encoding.** Standard CI-V frequency is 5 BCD bytes (can't represent above ~4.3 GHz).
-  The IC-905 uses a **variable length: 6 BCD bytes (12 digits) for bands ≥ 1.389 GHz, 5 bytes below**, with
-  64-bit internal arithmetic and per-band offsets. This is how it carries 2.4 / 5.6 / 10 GHz frequencies over
-  CI-V (commands `0x00/0x02/0x03/0x05/0x25`).
+## 2. Other undocumented command — `0x2A`
+Not in the public reference; three sub-commands:
+- **`2A 00`** — reads/writes **13-byte VFO/frequency records** (a ring of four — memo-pad / quick-recall style).
+- **`2A 01`** — extended **antenna / tuner** control.
+- **`2A 02`** — has a further sub-level (additional parameters).
 
 ---
 
 ## How these were found
 Decompile the firmware main image → locate the CI-V command dispatcher (a table of command → handler pointers)
-→ read each handler. The IC-705 results were verified live over USB CI-V, including unlocking the on-screen
-service menu with the recovered `SX-4075 Adjust` password.
+→ read each handler, confirming which `0x1A` service subs exist and what each does. The passwords were recovered
+from the firmware's text (rodata). The analogous IC-705 service block was additionally verified live over USB
+CI-V (its `SX-4075 Adjust` password unlocked the on-screen service menu), which cross-confirms this family of
+commands.
 
 ## Responsible use
-This describes what the firmware implements. The service/reset/adjust commands are dangerous (data loss,
-misalignment). Don't rely on undocumented commands for anything important — Icom may change them without notice.
-No firmware is included or required to read this document.
+This describes what the firmware implements. The service / reset / adjust / MAC-write commands are dangerous
+(data loss, misalignment, a changed network identity). Don't rely on undocumented commands for anything
+important — Icom may change them without notice. No firmware is included or required to read this document.
